@@ -16,3 +16,6 @@ venv/
 .idea/
 Thumbs.db
 desktop.ini
+
+# 测试缓存
+.pytest_cache/
