@@ -28,6 +28,8 @@ class PcapReader:
             raise PcapError(f"无法打开 {self.path}: {exc}") from exc
         with f:
             raw = f.read(24)
+            if len(raw) < 24:
+                raise PcapError(f"文件太短：只有 {len(raw)} 字节，不足以构成全局头")
             magic_bytes = raw[:4]
             if magic_bytes in (b"\xd4\xc3\xb2\xa1", b"\x4d\x3c\xb2\xa1"):
                 order = "<"

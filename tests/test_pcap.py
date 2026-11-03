@@ -31,7 +31,7 @@ def test_missing_file_raises_pcap_error(tmp_path):
     with pytest.raises(PcapError):
         list(PcapReader(tmp_path / "不存在.pcap"))
 
-#测试不是pcap文件
+#测试magic不对
 def test_bad_magic_raises_pcap_error(tmp_path):
     f = tmp_path / "bad.pcap"
     f.write_bytes(b"\x00" * 24)
@@ -68,12 +68,19 @@ def test_truncated_record_data_raises(tmp_path):
     with pytest.raises(PcapError):
         list(PcapReader(f))
     
-#测试数据荒谬长度
+#测试长度爆炸
 def test_absurd_incl_len_rejected(tmp_path):
     f = tmp_path / "huge.pcap"
     incl = 0x40001
     header = struct.pack("<IHHiIII", 0xA1B2C3D4, 2, 4, 0, 0, 65535, 1)
     record = struct.pack("<IIII", 1, 0, incl, incl) + b"\x00" * incl
     f.write_bytes(header + record)
+    with pytest.raises(PcapError):
+        list(PcapReader(f))
+
+#短文件
+def test_truncated_global_header_raises(tmp_path):
+    f = tmp_path / "short.pcap"
+    f.write_bytes(b"\xd4\xc3\xb2\xa1\x02\x00")
     with pytest.raises(PcapError):
         list(PcapReader(f))
