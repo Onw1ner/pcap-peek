@@ -3,7 +3,8 @@
 import sys
 from collections import Counter
 
-from pcappeek.frames import FrameError, parse_ethernet
+from pcappeek.frames import FrameError
+from pcappeek.link import link_payload
 from pcappeek.netlayer import NetError, parse_ipv4
 from pcappeek.pcap import PcapError, PcapReader
 from pcappeek.session import FlowTable, flow_key
@@ -44,19 +45,19 @@ def collect_stats(path: str) -> dict:
 
         # 第一层：以太网 → IPv4
         try:
-            eth = parse_ethernet(frame.data)
+            ethertype, payload = link_payload(frame.data)
         except FrameError:
             failed += 1
             continue
 
-        eths[eth.ethertype] += 1
+        eths[ethertype] += 1
 
-        if eth.ethertype != 0x0800:
+        if ethertype != 0x0800:
             skipped += 1
             continue
 
         try:
-            ip = parse_ipv4(eth.payload)
+            ip = parse_ipv4(payload)
         except NetError:
             failed += 1
             continue
@@ -108,7 +109,7 @@ def main(argv=None) -> int:
     print(f"帧总数: {s['total']}")
     print(f"跳过（非 IPv4）: {s['skipped']}")
     print(f"解析失败: {s['failed']}")
-    print("以太网类型:")
+    print("ethertype 分布（已归一化）:")
     for eth_type, n in s["eths"].most_common(6):
         print(f"  0x{eth_type:04X}  {n}")
     print("协议分布:")

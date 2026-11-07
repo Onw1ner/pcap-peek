@@ -64,5 +64,5 @@ def test_stats_counts_non_ipv4(tmp_path, capsys):
     assert "帧总数: 1" in out
     assert "跳过（非 IPv4）: 1" in out
     assert "解析失败: 0" in out
-    assert "以太网类型:" in out
+    assert "ethertype 分布（已归一化）:" in out
     assert "0x0806" in out
