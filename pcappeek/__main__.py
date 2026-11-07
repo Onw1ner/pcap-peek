@@ -6,11 +6,13 @@ from collections import Counter
 from pcappeek.frames import FrameError
 from pcappeek.link import link_payload
 from pcappeek.app.dns import DnsError, parse_dns_query
+from pcappeek.app.tls import HandshakeAssembler, TlsError, parse_client_hello
 from pcappeek.netlayer import NetError, parse_ipv4
 from pcappeek.pcap import PcapError, PcapReader
 from pcappeek.session import FlowTable, flow_key
 from pcappeek.transport import TransportError, parse_tcp, parse_udp
 from pcappeek.pcapng import PcapngError, PcapngReader
+
 
 PROTO_NAMES = {1: "ICMP", 6: "TCP", 17: "UDP"}
 PCAPNG_MAGIC = b"\x0a\x0d\x0d\x0a"
@@ -41,7 +43,10 @@ def collect_stats(path: str) -> dict:
     skipped = 0
     eths = Counter()
     dns_names = Counter()
-
+    sni_names = Counter()
+    tls_seen = 0
+    assembler = HandshakeAssembler()
+    tls_ok = 0
     for frame in open_reader(path):
         total += 1
 
@@ -79,15 +84,26 @@ def collect_stats(path: str) -> dict:
             failed += 1
             continue
 
-        table.add(
-            flow_key(ip.src, ip.dst, seg.src_port, seg.dst_port, ip.protocol),
-            nbytes=len(ip.payload),
-        )
+        key = flow_key(ip.src, ip.dst, seg.src_port, seg.dst_port, ip.protocol)
+        table.add(key, nbytes=len(ip.payload))
         if ip.protocol == 17 and seg.dst_port == 53:
             try:
                 dns_names[parse_dns_query(seg.payload).name] += 1
             except DnsError:
                 pass
+        if ip.protocol == 6 and seg.dst_port == 443:
+            record = assembler.feed(key, seg.payload)
+            if record is not None:
+                tls_seen += 1
+                try:
+                    name = parse_client_hello(record).server_name
+                except TlsError:
+                    name = ""
+                if name:
+                    tls_ok += 1
+                    sni_names[name] += 1
+        
+    
 
     return {
         "total": total,
@@ -98,7 +114,12 @@ def collect_stats(path: str) -> dict:
         "flows": table.flows(),
         "eths": eths,
         "dns": dns_names,
+        "sni": sni_names,
+        "tls_seen": tls_seen,
+        "tls_ok": tls_ok,
     }
+
+
 
 
 def main(argv=None) -> int:
@@ -130,6 +151,11 @@ def main(argv=None) -> int:
         print("DNS 查询 Top:")
         for name, n in s["dns"].most_common(8):
             print(f"  {name}  {n}")
+    print(f"TLS 握手：拼出 {s['tls_seen']} 条记录，解析出 {s['tls_ok']} 条")
+    if s["sni"]:
+                print("TLS SNI Top:")
+                for name, n in s["sni"].most_common(8):
+                    print(f"  {name}  {n}")
     print(f"会话数: {len(s['flows'])}")
     print("Top 会话:")
     for flow in s["flows"][:5]:
