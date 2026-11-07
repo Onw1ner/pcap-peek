@@ -27,6 +27,18 @@ def ipv4_packet(src: str, dst: str, proto: int, payload: bytes) -> bytes:
     return header + payload
 
 
+def tcp_segment(src_port: int, dst_port: int, payload: bytes, flags: int = 0x18) -> bytes:
+    header = struct.pack(
+        ">HHIIBBHHH",
+        src_port, dst_port, 1, 0, 0x50, flags, 8192, 0, 0,
+    )
+    return header + payload
+
+
+def udp_segment(src_port: int, dst_port: int, payload: bytes) -> bytes:
+    return struct.pack(">HHHH", src_port, dst_port, 8 + len(payload), 0) + payload
+
+
 def pcap_bytes(frames: list[bytes]) -> bytes:
     out = struct.pack("<IHHiIII", 0xA1B2C3D4, 2, 4, 0, 0, 65535, 1)
     for i, frame in enumerate(frames):
@@ -36,8 +48,12 @@ def pcap_bytes(frames: list[bytes]) -> bytes:
 
 def main() -> None:
     frames = [
-        ethernet_frame(ipv4_packet("192.168.1.1", "8.8.8.8", 6, b"tcp")),
-        ethernet_frame(ipv4_packet("192.168.1.1", "8.8.4.4", 17, b"udp")),
+        ethernet_frame(
+            ipv4_packet("192.168.1.1", "8.8.8.8", 6, tcp_segment(50000, 443, b"hello"))
+        ),
+        ethernet_frame(
+            ipv4_packet("192.168.1.1", "8.8.4.4", 17, udp_segment(50001, 53, b"query"))
+        ),
         ethernet_frame(ipv4_packet("192.168.1.2", "1.1.1.1", 1, b"icmp")),
     ]
 

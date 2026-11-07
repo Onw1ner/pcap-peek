@@ -6,6 +6,8 @@ from collections import Counter
 from pcappeek.frames import FrameError, parse_ethernet
 from pcappeek.netlayer import NetError, parse_ipv4
 from pcappeek.pcap import PcapError, PcapReader
+from pcappeek.session import FlowTable, flow_key
+from pcappeek.transport import TransportError, parse_tcp, parse_udp
 
 PROTO_NAMES = {1: "ICMP", 6: "TCP", 17: "UDP"}
 
@@ -13,11 +15,14 @@ PROTO_NAMES = {1: "ICMP", 6: "TCP", 17: "UDP"}
 def collect_stats(path: str) -> dict:
     proto = Counter()
     src = Counter()
+    table = FlowTable()
     total = 0
     failed = 0
 
     for frame in PcapReader(path):
         total += 1
+
+        # 第一层：以太网 → IPv4
         try:
             eth = parse_ethernet(frame.data)
             if eth.ethertype != 0x0800:
@@ -26,10 +31,34 @@ def collect_stats(path: str) -> dict:
         except (FrameError, NetError):
             failed += 1
             continue
+
         proto[PROTO_NAMES.get(ip.protocol, str(ip.protocol))] += 1
         src[ip.src] += 1
 
-    return {"total": total, "failed": failed, "proto": proto, "src": src}
+        # 第二层：TCP / UDP（ICMP 没有端口，跳过）
+        try:
+            if ip.protocol == 6:
+                seg = parse_tcp(ip.payload)
+            elif ip.protocol == 17:
+                seg = parse_udp(ip.payload)
+            else:
+                continue
+        except TransportError:
+            failed += 1
+            continue
+
+        table.add(
+            flow_key(ip.src, ip.dst, seg.src_port, seg.dst_port, ip.protocol),
+            nbytes=len(ip.payload),
+        )
+
+    return {
+        "total": total,
+        "failed": failed,
+        "proto": proto,
+        "src": src,
+        "flows": table.flows(),
+    }
 
 
 def main(argv=None) -> int:
@@ -53,6 +82,15 @@ def main(argv=None) -> int:
     print("源 IP 分布:")
     for addr, n in s["src"].most_common():
         print(f"  {addr:<13}{n}")
+    print(f"会话数: {len(s['flows'])}")
+    print("Top 会话:")
+    for flow in s["flows"][:5]:
+        k = flow.key
+        name = PROTO_NAMES.get(k.protocol, str(k.protocol))
+        print(
+            f"  {k.a_ip}:{k.a_port} ↔ {k.b_ip}:{k.b_port}  "
+            f"{name}  {flow.packets} 包  {flow.total_bytes} 字节"
+        )
     return 0
 
 
