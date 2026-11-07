@@ -5,6 +5,7 @@ from collections import Counter
 
 from pcappeek.frames import FrameError
 from pcappeek.link import link_payload
+from pcappeek.app.dns import DnsError, parse_dns_query
 from pcappeek.netlayer import NetError, parse_ipv4
 from pcappeek.pcap import PcapError, PcapReader
 from pcappeek.session import FlowTable, flow_key
@@ -39,6 +40,7 @@ def collect_stats(path: str) -> dict:
     failed = 0
     skipped = 0
     eths = Counter()
+    dns_names = Counter()
 
     for frame in open_reader(path):
         total += 1
@@ -81,6 +83,11 @@ def collect_stats(path: str) -> dict:
             flow_key(ip.src, ip.dst, seg.src_port, seg.dst_port, ip.protocol),
             nbytes=len(ip.payload),
         )
+        if ip.protocol == 17 and seg.dst_port == 53:
+            try:
+                dns_names[parse_dns_query(seg.payload).name] += 1
+            except DnsError:
+                pass
 
     return {
         "total": total,
@@ -90,6 +97,7 @@ def collect_stats(path: str) -> dict:
         "src": src,
         "flows": table.flows(),
         "eths": eths,
+        "dns": dns_names,
     }
 
 
@@ -118,6 +126,10 @@ def main(argv=None) -> int:
     print("源 IP 分布:")
     for addr, n in s["src"].most_common():
         print(f"  {addr:<16}{n}")
+    if s["dns"]:
+        print("DNS 查询 Top:")
+        for name, n in s["dns"].most_common(8):
+            print(f"  {name}  {n}")
     print(f"会话数: {len(s['flows'])}")
     print("Top 会话:")
     for flow in s["flows"][:5]:
