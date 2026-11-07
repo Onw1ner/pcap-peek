@@ -1,5 +1,6 @@
 """检测规则：每个函数都是纯函数，输入数字或文本，输出 Finding 列表。"""
-
+import base64
+import binascii
 from dataclasses import dataclass
 
 
@@ -90,3 +91,35 @@ def check_dns_tunnel(
             )
         )
     return findings
+
+
+HTTP_BASIC_MARK = b"authorization: basic "
+
+
+def check_http_basic(payload, subject):
+    """从一段 TCP 负载里找 HTTP Basic 凭据；密码只用来确认存在，不写进报告。"""
+    position = payload.lower().find(HTTP_BASIC_MARK)
+    if position < 0:
+        return []
+
+    start = position + len(HTTP_BASIC_MARK)
+    end = payload.find(b"\r\n", start)
+    if end < 0:
+        end = len(payload)
+
+    token = payload[start:end].strip()
+    try:
+        decoded = base64.b64decode(token, validate=True)
+    except (binascii.Error, ValueError):
+        return []
+
+    user = decoded.split(b":", 1)[0].decode("utf-8", "replace")
+    return [
+        Finding(
+            rule="plaintext_credential",
+            severity="high",
+            subject=subject,
+            detail=f"HTTP Basic 凭据：user={user}（密码已隐去）",
+            count=1,
+        )
+    ]
