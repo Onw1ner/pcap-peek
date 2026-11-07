@@ -12,6 +12,7 @@ from pcappeek.pcap import PcapError, PcapReader
 from pcappeek.session import FlowTable, flow_key
 from pcappeek.transport import TransportError, parse_tcp, parse_udp
 from pcappeek.pcapng import PcapngError, PcapngReader
+from pcappeek.report import build_report
 
 
 PROTO_NAMES = {1: "ICMP", 6: "TCP", 17: "UDP"}
@@ -127,20 +128,47 @@ def collect_stats(path: str) -> dict:
     }
 
 
+USAGE = (
+    "用法: python -m pcappeek stats 【pcap 文件】\n"
+    "      python -m pcappeek report 【pcap 文件】 [-o 输出文件]"
+)
 
 
 def main(argv=None) -> int:
     argv = sys.argv[1:] if argv is None else argv
 
-    if len(argv) != 2 or argv[0] != "stats":
-        print("用法: python -m pcappeek stats 【pcap 文件】", file=sys.stderr)
+    if len(argv) < 2 or argv[0] not in ("stats", "report"):
+        print(USAGE, file=sys.stderr)
         return 2
 
+    command, path, rest = argv[0], argv[1], argv[2:]
+
+    output = ""
+    if rest:
+        if len(rest) != 2 or rest[0] != "-o":
+            print(USAGE, file=sys.stderr)
+            return 2
+        output = rest[1]
+
     try:
-        s = collect_stats(argv[1])
+        s = collect_stats(path)
     except (PcapError, PcapngError) as exc:
         print(f"读取失败: {exc}", file=sys.stderr)
         return 1
+
+    if command == "report":
+        text = build_report(s, source=path)
+        if output:
+            try:
+                with open(output, "w", encoding="utf-8", newline="\n") as f:
+                    f.write(text)
+            except OSError as exc:
+                print(f"写入失败: {exc}", file=sys.stderr)
+                return 1
+            print(f"报告已写入 {output}")
+        else:
+            print(text, end="")
+        return 0
 
     print(f"帧总数: {s['total']}")
     print(f"跳过（非 IPv4）: {s['skipped']}")
