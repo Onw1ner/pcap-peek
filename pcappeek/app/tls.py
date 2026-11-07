@@ -124,9 +124,14 @@ class HandshakeAssembler:
 
     def __init__(self) -> None:
         self._pending: dict[object, bytearray] = {}
+        self._done: set[object] = set()
 
+        
     def feed(self, key: object, payload: bytes) -> bytes | None:
         """喂一段 TCP 负载。返回完整记录，或 None（还需更多数据）。"""
+        if key in self._done:
+            return None
+        
         chunk = self._pending.get(key)
 
         if chunk is None:
@@ -145,6 +150,7 @@ class HandshakeAssembler:
 
         if total > MAX_PENDING:
             self._pending.pop(key, None)
+            self._done.add(key)
             return None
 
         if len(chunk) < total:
@@ -152,6 +158,7 @@ class HandshakeAssembler:
 
         data = bytes(chunk[:total])
         self._pending.pop(key, None)
+        self._done.add(key)
         return data
 
     def __len__(self) -> int:

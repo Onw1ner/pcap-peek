@@ -34,3 +34,10 @@ def test_buffer_cap_drops_connection():
     assert a.feed(("k",), header) is None
     assert a.feed(("k",), b"\x00" * MAX_PENDING) is None
     assert a.feed(("k",), b"\x00" * 100) is None
+
+
+def test_connection_is_not_retried_after_success():
+    a = HandshakeAssembler()
+    data = record(40)
+    assert a.feed(("k",), data) == data
+    assert a.feed(("k",), data) is None

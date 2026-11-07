@@ -47,6 +47,8 @@ def collect_stats(path: str) -> dict:
     tls_seen = 0
     assembler = HandshakeAssembler()
     tls_ok = 0
+    tls_bad = 0
+    tls_no_sni = 0
     for frame in open_reader(path):
         total += 1
 
@@ -98,10 +100,13 @@ def collect_stats(path: str) -> dict:
                 try:
                     name = parse_client_hello(record).server_name
                 except TlsError:
-                    name = ""
-                if name:
-                    tls_ok += 1
-                    sni_names[name] += 1
+                    tls_bad += 1
+                else:
+                    if name:
+                        tls_ok += 1
+                        sni_names[name] += 1
+                    else:
+                        tls_no_sni += 1
         
     
 
@@ -117,6 +122,8 @@ def collect_stats(path: str) -> dict:
         "sni": sni_names,
         "tls_seen": tls_seen,
         "tls_ok": tls_ok,
+        "tls_bad": tls_bad,
+        "tls_no_sni": tls_no_sni,
     }
 
 
@@ -151,7 +158,10 @@ def main(argv=None) -> int:
         print("DNS 查询 Top:")
         for name, n in s["dns"].most_common(8):
             print(f"  {name}  {n}")
-    print(f"TLS 握手：拼出 {s['tls_seen']} 条记录，解析出 {s['tls_ok']} 条")
+    print(
+        f"TLS 握手：拼出 {s['tls_seen']} 条，解析出 {s['tls_ok']} 条，"
+        f"无 SNI {s['tls_no_sni']} 条，格式错误 {s['tls_bad']} 条"
+    )
     if s["sni"]:
                 print("TLS SNI Top:")
                 for name, n in s["sni"].most_common(8):
