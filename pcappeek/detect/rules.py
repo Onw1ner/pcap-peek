@@ -51,3 +51,42 @@ def check_syn_scan(
             count=syns,
         )
     ]
+
+
+DNS_TUNNEL_MIN_SUBDOMAINS = 10
+DNS_TUNNEL_MIN_LABEL_LEN = 40
+
+
+def check_dns_tunnel(
+    names,
+    min_subdomains=DNS_TUNNEL_MIN_SUBDOMAINS,
+    min_label_len=DNS_TUNNEL_MIN_LABEL_LEN,
+):
+    """按基域聚合，找出「超长子域数量异常多」的基域，疑似 DNS 隧道。"""
+    groups = {}
+    for name in names:
+        labels = name.rstrip(".").split(".")
+        if len(labels) < 4:
+            continue
+        base = ".".join(labels[-2:])
+        prefix = ".".join(labels[:-2])
+        if len(prefix) < min_label_len:
+            continue
+        groups.setdefault(base, set()).add(prefix)
+
+    findings = []
+    for base, prefixes in sorted(groups.items()):
+        if len(prefixes) < min_subdomains:
+            continue
+        findings.append(
+            Finding(
+                rule="dns_tunnel",
+                severity="medium",
+                subject=base,
+                detail=(
+                    f"{len(prefixes)} 个超长子域（长度 >= {min_label_len}），疑似隧道"
+                ),
+                count=len(prefixes),
+            )
+        )
+    return findings
