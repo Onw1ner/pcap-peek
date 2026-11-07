@@ -32,3 +32,11 @@ def test_tcp_options_shift_payload():
     seg = parse_tcp(data)
 
     assert seg.payload == b"hi"
+
+
+def test_tcp_reads_seq():
+    data = bytes.fromhex(
+        "5002" "01bb" "00000005" "00000000" "50" "18" "2000" "0000" "0000"
+    ) + b"hi"
+    seg = parse_tcp(data)
+    assert seg.seq == 5

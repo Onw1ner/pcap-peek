@@ -115,37 +115,62 @@ def parse_client_hello(data: bytes) -> ClientHello:
 MAX_PENDING = 16384
 
 
-class HandshakeAssembler:
-    """把跨多个 TCP 段的 TLS 记录拼回完整的一条。
+@dataclass
+class _Pending:
+    """一条连接的重组状态。"""
 
-    每个连接（key）一个独立缓冲；拼出完整记录后立即清掉该 key，
-    因为一个连接只有第一条 ClientHello 值得解析。
+    base_seq: int
+    buffer: bytearray
+
+
+class HandshakeAssembler:
+    """按 TCP 序列号把跨段数据拼成一条完整 TLS 记录。
+
+    三种真实情况：
+    - 重传：同一 seq 再来一次，重叠部分丢弃
+    - 迟到：起点落在已收范围内，只取没覆盖的尾巴
+    - 空洞：起点超过已收长度，说明中间缺段，放弃该连接（不猜）
     """
 
     def __init__(self) -> None:
-        self._pending: dict[object, bytearray] = {}
+        self._pending: dict[object, _Pending] = {}
         self._done: set[object] = set()
 
-        
-    def feed(self, key: object, payload: bytes) -> bytes | None:
-        """喂一段 TCP 负载。返回完整记录，或 None（还需更多数据）。"""
+    def feed(self, key: object, seq: int, payload: bytes) -> bytes | None:
         if key in self._done:
             return None
-        
-        chunk = self._pending.get(key)
 
-        if chunk is None:
-            if not payload.startswith(b"\x16"):
+        state = self._pending.get(key)
+
+        if state is None:
+            if not payload:
                 return None
-            chunk = bytearray()
-            self._pending[key] = chunk
+            if not payload.startswith(b"\x16"):
+                self._done.add(key)
+                return None
+            state = _Pending(base_seq=seq, buffer=bytearray())
+            self._pending[key] = state
+            
+        offset = seq - state.base_seq
 
-        chunk += payload
+        if offset < 0:
+            payload = payload[-offset:]
+            offset = 0
 
-        if len(chunk) < RECORD_HEADER_LEN:
+        if offset > len(state.buffer):
+            self._pending.pop(key, None)
+            self._done.add(key)
             return None
 
-        record_len = int.from_bytes(chunk[3:5], "big")
+        if offset < len(state.buffer):
+            payload = payload[len(state.buffer) - offset:]
+
+        state.buffer += payload
+
+        if len(state.buffer) < RECORD_HEADER_LEN:
+            return None
+
+        record_len = int.from_bytes(state.buffer[3:5], "big")
         total = RECORD_HEADER_LEN + record_len
 
         if total > MAX_PENDING:
@@ -153,10 +178,10 @@ class HandshakeAssembler:
             self._done.add(key)
             return None
 
-        if len(chunk) < total:
+        if len(state.buffer) < total:
             return None
 
-        data = bytes(chunk[:total])
+        data = bytes(state.buffer[:total])
         self._pending.pop(key, None)
         self._done.add(key)
         return data

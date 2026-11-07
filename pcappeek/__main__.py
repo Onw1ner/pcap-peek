@@ -94,7 +94,7 @@ def collect_stats(path: str) -> dict:
             except DnsError:
                 pass
         if ip.protocol == 6 and seg.dst_port == 443:
-            record = assembler.feed(key, seg.payload)
+            record = assembler.feed(key, seg.seq, seg.payload)
             if record is not None:
                 tls_seen += 1
                 try:

@@ -39,6 +39,7 @@ class TCPSegment:
     dst_port: int
     flags: int
     payload: bytes
+    seq: int
 
 
 def parse_tcp(data: bytes) -> TCPSegment:
@@ -63,4 +64,5 @@ def parse_tcp(data: bytes) -> TCPSegment:
         dst_port=int.from_bytes(data[2:4], "big"),
         flags=data[13],
         payload=data[data_offset:],
+        seq=int.from_bytes(data[4:8], "big"),
     )
