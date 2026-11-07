@@ -1,6 +1,7 @@
 from pcappeek.__main__ import main
 
 from demo_e2e import ethernet_frame, ipv4_packet, pcap_bytes,tcp_segment
+from tests.test_pcapng import make_pcapng
 
 
 def test_stats_prints_protocols(tmp_path, capsys):
@@ -35,3 +36,33 @@ def test_missing_file_exit_code(capsys):
 
     assert code == 1
     assert "读取失败" in err
+
+
+def test_stats_reads_pcapng(tmp_path, capsys):
+    frame = ethernet_frame(
+        ipv4_packet("10.0.0.9", "10.0.0.10", 6, tcp_segment(40000, 80, b"y"))
+    )
+    f = tmp_path / "one.pcapng"
+    f.write_bytes(make_pcapng([frame]))
+
+    code = main(["stats", str(f)])
+    out = capsys.readouterr().out
+
+    assert code == 0
+    assert "10.0.0.9:40000" in out
+
+
+def test_stats_counts_non_ipv4(tmp_path, capsys):
+    arp = bytes.fromhex("aabbccddeeff" "112233445566" "0806") + bytes(28)
+    f = tmp_path / "arp.pcap"
+    f.write_bytes(pcap_bytes([arp]))
+
+    code = main(["stats", str(f)])
+    out = capsys.readouterr().out
+
+    assert code == 0
+    assert "帧总数: 1" in out
+    assert "跳过（非 IPv4）: 1" in out
+    assert "解析失败: 0" in out
+    assert "以太网类型:" in out
+    assert "0x0806" in out
