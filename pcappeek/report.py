@@ -40,7 +40,15 @@ def build_report(stats, source="", top=5):
         f"| 解析失败 | {stats['failed']} |",
         f"| 会话数 | {len(stats['flows'])} |",
     ])
-
+    findings = stats.get("findings", [])
+    if findings:
+        out += _section("发现", [
+            "| 严重度 | 规则 | 对象 | 说明 |",
+            *[
+                f"| {f.severity} | {f.rule} | {f.subject} | {f.detail} |"
+                for f in findings
+            ],
+        ])
     out += _section("以太网类型", [
         f"| 0x{eth_type:04X} | {n} |"
         for eth_type, n in _top_items(stats["eths"], top)

@@ -1,6 +1,7 @@
 """报告生成测试：build_report 是纯函数，给定统计结果就返回一段文本。"""
 
 from pcappeek.report import build_report
+from pcappeek.detect import Finding
 
 
 def fake_stats():
@@ -42,3 +43,32 @@ def test_report_respects_top_limit():
     text = build_report(stats, top=3)
     assert "10.0.0.1" in text
     assert "10.0.0.6" not in text
+
+
+def test_report_lists_findings():
+    stats = fake_stats()
+    stats["findings"] = [
+        Finding(
+            rule="syn_scan",
+            severity="high",
+            subject="10.0.0.5",
+            detail="30 次 SYN，仅 0 次完成（0%）",
+            count=30,
+        )
+    ]
+
+    text = build_report(stats)
+
+    assert "## 发现" in text
+    assert "syn_scan" in text
+    assert "10.0.0.5" in text
+    assert "仅 0 次完成" in text
+
+
+def test_report_omits_findings_when_empty():
+    stats = fake_stats()
+    stats["findings"] = []
+
+    text = build_report(stats)
+
+    assert "发现" not in text

@@ -1,6 +1,6 @@
 """检测规则测试：规则函数是纯函数，给数字就出结论。"""
 
-from pcappeek.detect import Finding, check_dns_tunnel, check_http_basic, check_syn_scan
+from pcappeek.detect import Finding, check_dns_tunnel, check_http_basic, check_syn_scan, ScanTracker
 
 
 def test_flags_scan_with_low_completion():
@@ -83,3 +83,27 @@ def test_http_basic_header_is_case_insensitive():
     payload = b"GET / HTTP/1.1\r\naUtHoRiZaTiOn: bAsIc dXNlcjpwYXNz\r\n\r\n"
     findings = check_http_basic(payload, subject="10.0.0.5")
     assert len(findings) == 1
+
+
+def test_tracker_flags_scanner():
+    tracker = ScanTracker()
+    for port in range(30, 60):
+        tracker.feed("10.0.0.5", "10.0.0.9", port, 0x02)
+    findings = tracker.findings()
+    assert len(findings) == 1
+    assert findings[0].subject == "10.0.0.5"
+    assert findings[0].count == 30
+
+
+def test_tracker_ignores_healthy_host():
+    tracker = ScanTracker()
+    for port in range(30, 60):
+        tracker.feed("10.0.0.6", "10.0.0.9", port, 0x02)
+        tracker.feed("10.0.0.6", "10.0.0.9", port, 0x10)
+    assert tracker.findings() == []
+
+
+def test_tracker_without_syn_is_silent():
+    tracker = ScanTracker()
+    tracker.feed("10.0.0.7", "10.0.0.9", 80, 0x10)
+    assert tracker.findings() == []

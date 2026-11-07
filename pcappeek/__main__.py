@@ -13,6 +13,7 @@ from pcappeek.session import FlowTable, flow_key
 from pcappeek.transport import TransportError, parse_tcp, parse_udp
 from pcappeek.pcapng import PcapngError, PcapngReader
 from pcappeek.report import build_report
+from pcappeek.detect import ScanTracker, check_dns_tunnel, check_http_basic
 
 
 PROTO_NAMES = {1: "ICMP", 6: "TCP", 17: "UDP"}
@@ -50,6 +51,9 @@ def collect_stats(path: str) -> dict:
     tls_ok = 0
     tls_bad = 0
     tls_no_sni = 0
+    scan = ScanTracker()
+    http_hits = []
+
     for frame in open_reader(path):
         total += 1
 
@@ -86,7 +90,15 @@ def collect_stats(path: str) -> dict:
         except TransportError:
             failed += 1
             continue
-
+        if ip.protocol == 6:
+            scan.feed(ip.src, ip.dst, seg.dst_port, seg.flags)
+            if seg.dst_port == 80:
+                http_hits.extend(
+                    check_http_basic(
+                        seg.payload,
+                        subject=f"{ip.src}:{seg.src_port} -> {ip.dst}:80",
+                    )
+                )   
         key = flow_key(ip.src, ip.dst, seg.src_port, seg.dst_port, ip.protocol)
         table.add(key, nbytes=len(ip.payload))
         if ip.protocol == 17 and seg.dst_port == 53:
@@ -109,7 +121,7 @@ def collect_stats(path: str) -> dict:
                     else:
                         tls_no_sni += 1
         
-    
+    findings = scan.findings() + check_dns_tunnel(dns_names) + http_hits
 
     return {
         "total": total,
@@ -125,6 +137,7 @@ def collect_stats(path: str) -> dict:
         "tls_ok": tls_ok,
         "tls_bad": tls_bad,
         "tls_no_sni": tls_no_sni,
+        "findings": findings,
     }
 
 
@@ -194,6 +207,10 @@ def main(argv=None) -> int:
                 print("TLS SNI Top:")
                 for name, n in s["sni"].most_common(8):
                     print(f"  {name}  {n}")
+    print(f"发现: {len(s['findings'])} 条")
+    for finding in s["findings"]:
+        print(f"  [{finding.severity}] {finding.rule} {finding.subject}")
+        print(f"      {finding.detail}")                    
     print(f"会话数: {len(s['flows'])}")
     print("Top 会话:")
     for flow in s["flows"][:5]:
