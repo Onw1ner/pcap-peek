@@ -9,9 +9,6 @@ from pcappeek.report import build_report
 from pcappeek.stats import PROTO_NAMES,collect_stats
 
 
-PROTO_NAMES = {1: "ICMP", 6: "TCP", 17: "UDP"}
-PCAPNG_MAGIC = b"\x0a\x0d\x0d\x0a"
-
 
 USAGE = (
     "用法: python -m pcappeek stats 【pcap 文件】\n"

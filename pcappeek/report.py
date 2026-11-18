@@ -1,6 +1,6 @@
 """报告生成：把 collect_stats() 的结果渲染成一段文本（Markdown 风格）。"""
 
-PROTO_NAMES = {1: "ICMP", 6: "TCP", 17: "UDP"}
+from pcappeek.stats import PROTO_NAMES
 
 
 def _top_items(counter, top):

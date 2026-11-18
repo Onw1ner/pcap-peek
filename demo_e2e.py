@@ -4,13 +4,13 @@ import struct
 from collections import Counter
 from pathlib import Path
 
+from pcappeek.stats import PROTO_NAMES
 from pcappeek.frames import FrameError, parse_ethernet
 from pcappeek.netlayer import NetError, parse_ipv4
 from pcappeek.pcap import PcapReader
 
 MAC_DST = bytes.fromhex("aabbccddeeff")
 MAC_SRC = bytes.fromhex("112233445566")
-PROTO_NAMES = {1: "ICMP", 6: "TCP", 17: "UDP"}
 
 
 def ethernet_frame(payload: bytes) -> bytes:
